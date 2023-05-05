@@ -14,7 +14,7 @@ openai.api_key = os.environ.get("OPENAI_API_KEY")
 pinecone_api_key = os.environ.get("PINECONE_API_KEY")
 pinecone_env = os.environ.get("PINECONE_ENV")
 
-df = pd.read_pickle('output.pkl')
+df = pd.read_pickle('output_without_embeddings.pkl')
 
 index_name = 'midrash'
 

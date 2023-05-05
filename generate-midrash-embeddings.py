@@ -173,6 +173,8 @@ for index, row in df_run.iterrows():
             # save the csv off so we don't lose progress
             df_run.to_csv(output_csv, index=False)
             df_run.to_pickle(output_pkl)
+            df_smaller = df_run.drop(columns=['ada_embedding'])
+            df_smaller.to_pickle(output_pkl.split('.')[0]+'_without_embeddings.pkl')
             print('upload success')
             batch_count = 0
     except Exception as e:

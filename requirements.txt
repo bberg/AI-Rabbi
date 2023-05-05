@@ -2,3 +2,4 @@ flask==2.3.2
 openai==0.27.2
 pinecone-client==2.2.1
 pandas==2.0.1
+gunicorn==20.1.0

@@ -14,7 +14,7 @@ openai.api_key = os.environ.get("OPENAI_API_KEY")
 pinecone_api_key = os.environ.get("PINECONE_API_KEY")
 pinecone_env = os.environ.get("PINECONE_ENV")
 
-df = pd.read_pickle('output_without_embeddings.pkl')
+df = pd.read_pickle('output-5sentence_without_embeddings.pkl')
 
 index_name = 'midrash'
 
@@ -59,7 +59,7 @@ def search_function(query,texts):
             model="gpt-4",
             messages=[
                 {"role": "system",
-                 "content": "You are a Rabbi chatbot analyzing Midrash, analyze how each of the provided source texts specifically answers the question. Identify areas within or between the texts where different or conflicting advice is provided and explain what is meant by these contradictions. Cite the sources explicitly.  If your are unable to answer the question using the provided context, say 'I don't know'"},
+                 "content": "You are a Rabbi chatbot analyzing Midrash, analyze how each of the provided source texts specifically answers the question in the style of a talmudic rabbi. Provide step-by-step reasoning to help understand how each source addresses the question - cite your sources explicitly. Identify areas within or between the texts where different or conflicting advice is provided. Using only the information from the sources provide a detailed story from a rabbinic sermon to illustrate the answer to the question for modern people. Using only the information from the sources provide a nuanced theological and philosophical explanation to the question. If your are unable to answer the question using the provided context, say 'I don't know'"},
                 {"role": "user", "content": context_plus_query}
             ],
             temperature=0.2,

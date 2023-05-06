@@ -107,11 +107,11 @@ pinecone_index_name = 'midrash'
 # directory containing text files
 directory = 'Sefaria-Export/txt/Midrash'
 
-output_csv = 'output.csv'
-output_pkl = 'output.pkl'
+output_csv = 'output-5sentence.csv'
+output_pkl = 'output-5sentence.pkl'
 
 # how many sentences should each segment be? Total needs to be less than the token limit for ada
-sentence_block_length = 25
+sentence_block_length = 5
 # todo remove
 # 25 -> 51828
 # 50 -> 26070
@@ -164,7 +164,7 @@ for index, row in df_run.iterrows():
             print('batch upload')
             batch = df_run[index-batch_size:index]
             # get tuples formatted for pinecone
-            batch_tuples = [(str(batch_index), batch_row['ada_embedding']) for batch_index, batch_row in batch.iterrows()]
+            batch_tuples = [(str(batch_index), batch_row['ada_embedding'],{'length': 5}) for batch_index, batch_row in batch.iterrows()]
             # pp(batch_tuples)
             # upload to pinecone
             res = pinecone_index.upsert(vectors=batch_tuples)

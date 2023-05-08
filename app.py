@@ -6,8 +6,9 @@ import time
 import random
 import pandas as pd
 import os
+import tiktoken
 
-print_all = True
+print_all = False
 
 app = Flask(__name__)
 openai.api_key = os.environ.get("OPENAI_API_KEY")
@@ -17,6 +18,7 @@ pinecone_env = os.environ.get("PINECONE_ENV")
 df = pd.read_pickle('output-5sentence_without_embeddings.pkl')
 
 index_name = 'midrash'
+encoding = tiktoken.get_encoding("cl100k_base")
 
 pinecone.init(api_key=pinecone_api_key, environment=pinecone_env)
 
@@ -61,7 +63,7 @@ def search_function(query,texts):
                 {"role": "system",
                  "content": "You are a Rabbi chatbot analyzing Midrash, analyze how each of the provided source texts specifically answers the question in the style of a talmudic rabbi. Provide step-by-step reasoning to help understand how each source addresses the question - cite your sources explicitly. Identify areas within or between the texts where different or conflicting advice is provided. Using only the information from the sources provide a detailed story from a rabbinic sermon to illustrate the answer to the question for modern people. Using only the information from the sources provide a nuanced theological and philosophical explanation to the question. If your are unable to answer the question using the provided context, say 'I don't know'"}
                 ,{"role": "user", "content": context_plus_query}
-                ,{"role": "user", "content": "continue"}
+                # ,{"role": "user", "content": "continue"}
             ],
             temperature=0.2,
             stream=True
@@ -69,9 +71,11 @@ def search_function(query,texts):
         # create variables to collect the stream of chunks
         collected_chunks = []
         collected_messages = []
+        total_message = ''
         # iterate through the stream of events
         for chunk in response:
-            pp(chunk)
+            if print_all:
+                pp(chunk)
             collected_chunks.append(chunk)  # save the event response
             try:
                 chunk_message = chunk['choices'][0]['delta']['content']  # extract the message
@@ -79,8 +83,10 @@ def search_function(query,texts):
                 chunk_message = ''
 
             collected_messages.append(chunk_message)  # save the message
+            total_message += chunk_message
             # print(chunk_message)
             yield chunk_message
+        yield str(num_tokens_from_string(total_message,"cl100k_base"))
     except Exception as e:
         yield str(e)
 
@@ -100,7 +106,7 @@ def get_relevant_sources(topic):
     # get relevant contexts (including the questions)
     res = pinecone_index.query(xq, top_k=3, include_metadata=True)
 
-    print(res)
+    # print(res)
     # TODO then do a second pass within the top articles and identify the top 1 or two segments that pertain to the item requested
 
     texts = []
@@ -109,6 +115,11 @@ def get_relevant_sources(topic):
         texts.append(df.loc[int(i['id']),].to_dict())
     return texts
 
+def num_tokens_from_string(string: str, encoding_name: str) -> int:
+    """Returns the number of tokens in a text string."""
+    encoding = tiktoken.get_encoding(encoding_name)
+    num_tokens = len(encoding.encode(string))
+    return num_tokens
 
 @app.route('/')
 def index():

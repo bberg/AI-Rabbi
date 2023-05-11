@@ -67,6 +67,8 @@ if index_name not in pinecone.list_indexes():
 pinecone_index = pinecone.Index(index_name)
 # view index stats
 print(pinecone_index.describe_index_stats())
+with app.app_context():
+    init_db()
 
 @auth.verify_password
 def verify_password(username, password):
@@ -210,10 +212,4 @@ def view_logs():
     return render_template('logs.html', logs=logs)
 
 if __name__ == '__main__':
-    with app.app_context():
-        init_db()
     app.run(debug=True, port=3000)
-
-
-
-

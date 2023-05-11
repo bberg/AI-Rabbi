@@ -5,5 +5,6 @@ CREATE TABLE IF NOT EXISTS search_logs (
     real_ip_address TEXT NOT NULL,
     query TEXT,
     collected_messages TEXT,
+    user_id TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );

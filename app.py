@@ -10,6 +10,8 @@ import random
 from flask import Flask, render_template, request, Response, stream_with_context, g, url_for, redirect
 from flask_httpauth import HTTPBasicAuth
 from datetime import datetime, timedelta
+import uuid
+
 
 
 auth = HTTPBasicAuth()
@@ -77,24 +79,33 @@ def verify_password(username, password):
         return username
     return None
 
-def is_request_allowed(ip_address, real_ip_address):
-    if ip_address in ALLOWED_IPS or real_ip_address in ALLOWED_IPS:
-        return True
-
+def is_request_allowed(user_id):
+    # todo add exception for development using cookies
+    # if ip_address in ALLOWED_IPS or real_ip_address in ALLOWED_IPS:
+    #     return True
+    #
     db = get_db()
 
     one_day_ago = datetime.utcnow() - timedelta(days=1)
+    # todo remove if cookies work and this is no longer needed
+    # recent_requests = db.execute(
+    #     'SELECT COUNT(*) as cnt FROM search_logs WHERE ip_address = ? AND timestamp >= ?',
+    #     (ip_address, one_day_ago)
+    # ).fetchone()
+    #
+    # recent_requests_real = db.execute(
+    #     'SELECT COUNT(*) as cnt FROM search_logs WHERE real_ip_address = ? AND timestamp >= ?',
+    #     (real_ip_address, one_day_ago)
+    # ).fetchone()
+    #
+    # if recent_requests['cnt'] >= 5 or recent_requests_real['cnt'] >= 5:
+    #     return False
+
     recent_requests = db.execute(
-        'SELECT COUNT(*) as cnt FROM search_logs WHERE ip_address = ? AND timestamp >= ?',
-        (ip_address, one_day_ago)
+        'SELECT COUNT(*) as cnt FROM search_logs WHERE user_id = ? AND timestamp >= ?',
+        (user_id, one_day_ago)
     ).fetchone()
-
-    recent_requests_real = db.execute(
-        'SELECT COUNT(*) as cnt FROM search_logs WHERE real_ip_address = ? AND timestamp >= ?',
-        (real_ip_address, one_day_ago)
-    ).fetchone()
-
-    if recent_requests['cnt'] >= 5 or recent_requests_real['cnt'] >= 5:
+    if recent_requests['cnt'] >= 5:
         return False
 
     return True
@@ -103,7 +114,7 @@ def get_embedding(text, model="text-embedding-ada-002"):
    text = text.replace("\n", " ")
    return openai.Embedding.create(input = [text], model=model)['data'][0]['embedding']
 
-def search_function(query,texts):
+def search_function(query,texts,user_id):
     original_query = query
     context_plus_query = ''
     ip_address = request.remote_addr
@@ -128,7 +139,6 @@ def search_function(query,texts):
                 {"role": "system",
                  "content": "You are a Rabbi chatbot analyzing Midrash, analyze how each of the provided source texts specifically answers the question in the style of a talmudic rabbi. Provide step-by-step reasoning to help understand how each source addresses the question - cite your sources explicitly. Identify areas within or between the texts where different or conflicting advice is provided. Using only the information from the sources provide a detailed story from a rabbinic sermon to illustrate the answer to the question for modern people. Using only the information from the sources provide a nuanced theological and philosophical explanation to the question. If your are unable to answer the question using the provided context, say 'I don't know'"}
                 ,{"role": "user", "content": context_plus_query}
-                # ,{"role": "user", "content": "continue"}
             ],
             temperature=0.2,
             stream=True
@@ -149,15 +159,14 @@ def search_function(query,texts):
 
             collected_messages.append(chunk_message)  # save the message
             query += chunk_message
-            # print(chunk_message)
             yield chunk_message
-        yield str(num_tokens_from_string(total_message,"cl100k_base"))
+
 
     except Exception as e:
         yield str(e)
     db = get_db()
     # print(ip_address, original_query, query)
-    insert_statement = "INSERT INTO search_logs (ip_address, real_ip_address, query, collected_messages) VALUES (\""+ip_address+"\",\""+real_ip_address+"\",\""+original_query+"\",\""+query+"\")"
+    insert_statement = "INSERT INTO search_logs (ip_address, real_ip_address, query, collected_messages, user_id) VALUES (\""+ip_address+"\",\""+real_ip_address+"\",\""+original_query+"\",\""+query+"\",\""+user_id+"\")"
     print(insert_statement)
     db.execute(insert_statement)
     db.commit()
@@ -199,15 +208,21 @@ def index():
 @app.route('/search', methods=['POST'])
 def search():
     query = request.form['search']
-    ip_address = request.remote_addr
-    real_ip_address = request.environ.get('HTTP_REAL_IP', request.remote_addr)
+    # todo remove if cookies work and this is no longer needed
+    # ip_address = request.remote_addr
+    # real_ip_address = request.environ.get('HTTP_REAL_IP', request.remote_addr)
+    user_id = request.cookies.get('user_id')
+    if not user_id:
+        user_id = str(uuid.uuid4())
 
-    if not is_request_allowed(ip_address, real_ip_address):
+    if not is_request_allowed(user_id):
         return "You have reached the daily request limit. Per-user usage is limited for now. Please try again later."
 
     texts = get_relevant_sources(query)
     pp(texts)
-    return Response(stream_with_context(search_function(query,texts)), content_type='text/event-stream')
+    response = Response(stream_with_context(search_function(query,texts,user_id)), content_type='text/event-stream')
+    response.set_cookie('user_id', user_id, max_age=60 * 60 * 24 * 365)
+    return response
 
 @app.route('/logs')
 @auth.login_required

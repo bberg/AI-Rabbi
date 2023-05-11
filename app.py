@@ -210,9 +210,8 @@ def view_logs():
     return render_template('logs.html', logs=logs)
 
 if __name__ == '__main__':
-    if not os.path.isfile(db_file):
-        with app.app_context():
-            init_db()
+    with app.app_context():
+        init_db()
     app.run(debug=True, port=3000)
 
 

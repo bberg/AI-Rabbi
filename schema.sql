@@ -1,4 +1,4 @@
-CREATE TABLE search_logs (
+CREATE TABLE IF NOT EXISTS search_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ip_address TEXT NOT NULL,
     query TEXT,

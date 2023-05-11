@@ -77,8 +77,8 @@ def verify_password(username, password):
         return username
     return None
 
-def is_request_allowed(ip_address):
-    if ip_address in ALLOWED_IPS:
+def is_request_allowed(ip_address, real_ip_address):
+    if ip_address in ALLOWED_IPS or real_ip_address in ALLOWED_IPS:
         return True
 
     db = get_db()
@@ -89,11 +89,15 @@ def is_request_allowed(ip_address):
         (ip_address, one_day_ago)
     ).fetchone()
 
-    if recent_requests['cnt'] >= 5:
+    recent_requests_real = db.execute(
+        'SELECT COUNT(*) as cnt FROM search_logs WHERE real_ip_address = ? AND timestamp >= ?',
+        (real_ip_address, one_day_ago)
+    ).fetchone()
+
+    if recent_requests['cnt'] >= 5 or recent_requests_real['cnt'] >= 5:
         return False
 
     return True
-
 
 def get_embedding(text, model="text-embedding-ada-002"):
    text = text.replace("\n", " ")
@@ -103,6 +107,7 @@ def search_function(query,texts):
     original_query = query
     context_plus_query = ''
     ip_address = request.remote_addr
+    real_ip_address = request.environ.get('HTTP_REAL_IP', request.remote_addr)
 
     for t in texts:
         filename = '\nsource: '+str(t['filename'])
@@ -151,9 +156,8 @@ def search_function(query,texts):
     except Exception as e:
         yield str(e)
     db = get_db()
-    print(ip_address, original_query, query)
-    insert_statement = "INSERT INTO search_logs (ip_address, query, collected_messages) VALUES (\""+ip_address+"\",\""+original_query+"\",\""+query+"\")"
-    "CAT "
+    # print(ip_address, original_query, query)
+    insert_statement = "INSERT INTO search_logs (ip_address, real_ip_address, query, collected_messages) VALUES (\""+ip_address+"\",\""+real_ip_address+"\",\""+original_query+"\",\""+query+"\")"
     print(insert_statement)
     db.execute(insert_statement)
     db.commit()
@@ -196,8 +200,9 @@ def index():
 def search():
     query = request.form['search']
     ip_address = request.remote_addr
+    real_ip_address = request.environ.get('HTTP_REAL_IP', request.remote_addr)
 
-    if not is_request_allowed(ip_address):
+    if not is_request_allowed(ip_address, real_ip_address):
         return "You have reached the daily request limit. Per-user usage is limited for now. Please try again later."
 
     texts = get_relevant_sources(query)

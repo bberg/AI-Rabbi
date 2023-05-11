@@ -12,6 +12,14 @@
         <div class="logo-container text-center">
             <img src="{{ url_for('static', filename='img/airabbi.png') }}" alt="Logo" class="logo">
         </div>
+        <div id="marketing-text" class="text-center mt-4">
+<!--            <h2 id="marketing-heading">AI Rabbi</h2>-->
+            <h3 id="marketing-heading">AI to answer life's questions using Jewish source texts</h3>
+        </div>
+                    <p id="marketing-paragraph">
+                The AI Rabbi answers any question finding and analyzing up to three relevant sources. A summary of how past Jewish thinkers have approached your question is provided in a few different styles.
+            </p>
+
 <!--        <h1 class="text-center text-secondary">AI Rabbi</h1>-->
         <form id="search-form" class="search-form">
             <div class="input-group">
@@ -24,6 +32,10 @@
     <script>
         document.getElementById("search-form").addEventListener("submit", async (event) => {
             event.preventDefault();
+
+            document.getElementById('marketing-text').classList.add('shrink');
+            document.getElementById('marketing-paragraph').textContent = '';
+
 
             const searchInput = document.querySelector("input[name='search']");
             const query = searchInput.value;
@@ -53,6 +65,11 @@
                 resultsElement.scrollTop = resultsElement.scrollHeight;
             }
         });
+        // Shrink marketing text when search is conducted
+        // function shrinkText() {
+        //
+        // }
+        // document.getElementById('search-btn').addEventListener('click', shrinkText);
     </script>
 </body>
 </html>

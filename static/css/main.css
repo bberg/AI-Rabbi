@@ -43,3 +43,24 @@ body {
 .btn-secondary:focus {
     box-shadow: 0 0 0 0.25rem rgba(208, 203, 200, 0.5);
 }
+.shrink {
+    font-size: 0.5em;
+    transition: font-size 0.3s ease;
+}
+
+#marketing-text {
+    background-color: #d0cbc8;
+    padding: 10px;
+    border-radius: 10px;
+    /*box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);*/
+    margin: 5px;
+}
+
+#marketing-heading {
+    color: #17171f;
+}
+
+#marketing-paragraph {
+    text-align:center;
+    /*color: #271827;*/
+}

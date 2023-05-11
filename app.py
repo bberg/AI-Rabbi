@@ -1,12 +1,34 @@
-from flask import Flask, render_template, request, Response, stream_with_context
 from pprint import pprint as pp
 import openai
 import pinecone
+import pandas as pd
+import tiktoken
+import os
+import sqlite3
 import time
 import random
-import pandas as pd
-import os
-import tiktoken
+from flask import Flask, render_template, request, Response, stream_with_context, g
+
+app = Flask(__name__)
+db_file = 'search_logs.db'
+
+def init_db():
+    db = get_db()
+    with app.open_resource('schema.sql', mode='r') as f:
+        db.cursor().executescript(f.read())
+    db.commit()
+
+def get_db():
+    if 'db' not in g:
+        g.db = sqlite3.connect(db_file)
+        g.db.row_factory = sqlite3.Row
+    return g.db
+
+@app.teardown_appcontext
+def close_db(exception):
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
 
 print_all = False
 
@@ -42,7 +64,9 @@ def get_embedding(text, model="text-embedding-ada-002"):
    return openai.Embedding.create(input = [text], model=model)['data'][0]['embedding']
 
 def search_function(query,texts):
+    original_query = query
     context_plus_query = ''
+    ip_address = request.remote_addr
 
     for t in texts:
         filename = '\nsource: '+str(t['filename'])
@@ -83,13 +107,19 @@ def search_function(query,texts):
                 chunk_message = ''
 
             collected_messages.append(chunk_message)  # save the message
-            total_message += chunk_message
+            query += chunk_message
             # print(chunk_message)
             yield chunk_message
         yield str(num_tokens_from_string(total_message,"cl100k_base"))
+
     except Exception as e:
         yield str(e)
-
+    db = get_db()
+    db.execute(
+        'INSERT INTO search_logs (ip_address, query, collected_messages) VALUES (?, ?, ?)',
+        (ip_address, original_query, query)
+    )
+    db.commit()
 def search_function_debug(query):
     start_time = time.time()
     duration = 30  # Duration in seconds
@@ -133,7 +163,10 @@ def search():
     return Response(stream_with_context(search_function(query,texts)), content_type='text/event-stream')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    if not os.path.isfile(db_file):
+        with app.app_context():
+            init_db()
+    app.run(debug=True, port=3000)
 
 
 

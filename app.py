@@ -89,12 +89,12 @@ def is_request_allowed(user_id):
     one_day_ago = datetime.utcnow() - timedelta(days=1)
     # todo remove if cookies work and this is no longer needed
     # recent_requests = db.execute(
-    #     'SELECT COUNT(*) as cnt FROM search_logs WHERE ip_address = ? AND timestamp >= ?',
+    #     'SELECT COUNT(*) as cnt FROM response_logs WHERE ip_address = ? AND timestamp >= ?',
     #     (ip_address, one_day_ago)
     # ).fetchone()
     #
     # recent_requests_real = db.execute(
-    #     'SELECT COUNT(*) as cnt FROM search_logs WHERE real_ip_address = ? AND timestamp >= ?',
+    #     'SELECT COUNT(*) as cnt FROM response_logs WHERE real_ip_address = ? AND timestamp >= ?',
     #     (real_ip_address, one_day_ago)
     # ).fetchone()
     #
@@ -102,7 +102,7 @@ def is_request_allowed(user_id):
     #     return False
 
     recent_requests = db.execute(
-        'SELECT COUNT(*) as cnt FROM search_logs WHERE user_id = ? AND timestamp >= ?',
+        'SELECT COUNT(*) as cnt FROM request_logs WHERE user_id = ? AND timestamp >= ?',
         (user_id, one_day_ago)
     ).fetchone()
     if recent_requests['cnt'] >= 5:
@@ -166,7 +166,7 @@ def search_function(query,texts,user_id):
         yield str(e)
     db = get_db()
     # print(ip_address, original_query, query)
-    insert_statement = "INSERT INTO search_logs (ip_address, real_ip_address, query, collected_messages, user_id) VALUES (\""+ip_address+"\",\""+real_ip_address+"\",\""+original_query+"\",\""+query+"\",\""+user_id+"\")"
+    insert_statement = "INSERT INTO response_logs (ip_address, real_ip_address, query, collected_messages, user_id) VALUES (\""+ip_address+"\",\""+real_ip_address+"\",\""+original_query+"\",\""+query+"\",\""+user_id+"\")"
     print(insert_statement)
     db.execute(insert_statement)
     db.commit()
@@ -209,14 +209,21 @@ def index():
 def search():
     query = request.form['search']
     # todo remove if cookies work and this is no longer needed
-    # ip_address = request.remote_addr
-    # real_ip_address = request.environ.get('HTTP_REAL_IP', request.remote_addr)
+    ip_address = request.remote_addr
+    real_ip_address = request.environ.get('HTTP_REAL_IP', request.remote_addr)
     user_id = request.cookies.get('user_id')
     if not user_id:
         user_id = str(uuid.uuid4())
 
     if not is_request_allowed(user_id):
         return "You have reached the daily request limit. Per-user usage is limited for now. Please try again later."
+
+    # insert request into the log
+    db = get_db()
+    insert_statement = "INSERT INTO request_logs (ip_address, real_ip_address, query, user_id) VALUES (\""+ip_address+"\",\""+real_ip_address+"\",\""+query+"\",\""+user_id+"\")"
+    db.execute(insert_statement)
+    db.commit()
+
 
     texts = get_relevant_sources(query)
     pp(texts)
@@ -228,8 +235,15 @@ def search():
 @auth.login_required
 def view_logs():
     db = get_db()
-    logs = db.execute('SELECT * FROM search_logs ORDER BY timestamp DESC').fetchall()
-    return render_template('logs.html', logs=logs)
+    logs = db.execute('SELECT * FROM request_logs ORDER BY timestamp DESC').fetchall()
+    return render_template('request_logs.html', logs=logs)
+
+@app.route('/response_logs')
+@auth.login_required
+def view_response_logs():
+    db = get_db()
+    logs = db.execute('SELECT * FROM response_logs ORDER BY timestamp DESC').fetchall()
+    return render_template('response_logs.html', logs=logs)
 
 if __name__ == '__main__':
     app.run(debug=True, port=3000)

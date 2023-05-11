@@ -7,10 +7,20 @@ import os
 import sqlite3
 import time
 import random
-from flask import Flask, render_template, request, Response, stream_with_context, g
+from flask import Flask, render_template, request, Response, stream_with_context, g, url_for, redirect
+from flask_httpauth import HTTPBasicAuth
+from datetime import datetime, timedelta
+
+
+auth = HTTPBasicAuth()
 
 app = Flask(__name__)
+
 db_file = 'search_logs.db'
+
+# Update this list with the IP addresses you want to exempt
+ALLOWED_IPS = ['192.0.2.1', '192.0.2.2']
+
 
 def init_db():
     db = get_db()
@@ -57,6 +67,30 @@ if index_name not in pinecone.list_indexes():
 pinecone_index = pinecone.Index(index_name)
 # view index stats
 print(pinecone_index.describe_index_stats())
+
+@auth.verify_password
+def verify_password(username, password):
+    # Replace these hardcoded credentials with your own
+    if username == 'admin' and password == os.getenv('LOG_PASSWORD'):
+        return username
+    return None
+
+def is_request_allowed(ip_address):
+    if ip_address in ALLOWED_IPS:
+        return True
+
+    db = get_db()
+
+    one_day_ago = datetime.utcnow() - timedelta(days=1)
+    recent_requests = db.execute(
+        'SELECT COUNT(*) as cnt FROM search_logs WHERE ip_address = ? AND timestamp >= ?',
+        (ip_address, one_day_ago)
+    ).fetchone()
+
+    if recent_requests['cnt'] >= 5:
+        return False
+
+    return True
 
 
 def get_embedding(text, model="text-embedding-ada-002"):
@@ -115,10 +149,11 @@ def search_function(query,texts):
     except Exception as e:
         yield str(e)
     db = get_db()
-    db.execute(
-        'INSERT INTO search_logs (ip_address, query, collected_messages) VALUES (?, ?, ?)',
-        (ip_address, original_query, query)
-    )
+    print(ip_address, original_query, query)
+    insert_statement = "INSERT INTO search_logs (ip_address, query, collected_messages) VALUES (\""+ip_address+"\",\""+original_query+"\",\""+query+"\")"
+    "CAT "
+    print(insert_statement)
+    db.execute(insert_statement)
     db.commit()
 def search_function_debug(query):
     start_time = time.time()
@@ -158,9 +193,21 @@ def index():
 @app.route('/search', methods=['POST'])
 def search():
     query = request.form['search']
+    ip_address = request.remote_addr
+
+    if not is_request_allowed(ip_address):
+        return "You have reached the daily request limit. Per-user usage is limited for now. Please try again later."
+
     texts = get_relevant_sources(query)
     pp(texts)
     return Response(stream_with_context(search_function(query,texts)), content_type='text/event-stream')
+
+@app.route('/logs')
+@auth.login_required
+def view_logs():
+    db = get_db()
+    logs = db.execute('SELECT * FROM search_logs ORDER BY timestamp DESC').fetchall()
+    return render_template('logs.html', logs=logs)
 
 if __name__ == '__main__':
     if not os.path.isfile(db_file):

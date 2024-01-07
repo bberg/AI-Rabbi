@@ -7,6 +7,8 @@ import os
 import sqlite3
 import time
 import random
+from apscheduler.schedulers.background import BackgroundScheduler
+import atexit
 from flask import Flask, render_template, request, Response, stream_with_context, g, url_for, redirect, flash
 from flask_httpauth import HTTPBasicAuth
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -73,6 +75,20 @@ print(pinecone_index.describe_index_stats())
 with app.app_context():
     init_db()
 
+# to keep pinecone from dumping the database, schedule at least one request per day
+def scheduled_task():
+    print("making keepalive request to pinecone")
+    get_relevant_sources("what is the meaning of life? keepalive test")
+    pass
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=scheduled_task, trigger="interval", minutes=1)
+scheduler.start()
+atexit.register(lambda: scheduler.shutdown())
+
+@app.teardown_appcontext
+def shutdown_scheduler(exception=None):
+    scheduler.shutdown()
 
 # our user model
 class User(UserMixin):
@@ -269,6 +285,8 @@ def view_response_logs():
     db = get_db()
     logs = db.execute('SELECT * FROM response_logs ORDER BY timestamp DESC').fetchall()
     return render_template('response_logs.html', logs=logs)
+
+
 
 if __name__ == '__main__':
     app.secret_key = 'super secret key'

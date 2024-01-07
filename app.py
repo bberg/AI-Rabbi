@@ -9,6 +9,8 @@ import time
 import random
 from flask import Flask, render_template, request, Response, stream_with_context, g, url_for, redirect
 from flask_httpauth import HTTPBasicAuth
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import uuid
 
@@ -20,9 +22,9 @@ app = Flask(__name__)
 
 db_file = 'search_logs.db'
 
-# Update this list with the IP addresses you want to exempt
-ALLOWED_IPS = ['192.0.2.1', '192.0.2.2']
-
+login_manager = LoginManager()
+login_manager.login_view = 'login'
+login_manager.init_app(app)
 
 def init_db():
     db = get_db()
@@ -44,7 +46,6 @@ def close_db(exception):
 
 print_all = False
 
-app = Flask(__name__)
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 pinecone_api_key = os.environ.get("PINECONE_API_KEY")
 pinecone_env = os.environ.get("PINECONE_ENV")
@@ -72,6 +73,18 @@ print(pinecone_index.describe_index_stats())
 with app.app_context():
     init_db()
 
+
+# our user model
+class User(UserMixin):
+    def __init__(self, id, username, password):
+        self.id = id
+        self.username = username
+        self.password = password
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.get(user_id)
+
 @auth.verify_password
 def verify_password(username, password):
     # Replace these hardcoded credentials with your own
@@ -81,25 +94,10 @@ def verify_password(username, password):
 
 def is_request_allowed(user_id):
     # todo add exception for development using cookies
-    # if ip_address in ALLOWED_IPS or real_ip_address in ALLOWED_IPS:
-    #     return True
-    #
     db = get_db()
 
     one_day_ago = datetime.utcnow() - timedelta(days=1)
     # todo remove if cookies work and this is no longer needed
-    # recent_requests = db.execute(
-    #     'SELECT COUNT(*) as cnt FROM response_logs WHERE ip_address = ? AND timestamp >= ?',
-    #     (ip_address, one_day_ago)
-    # ).fetchone()
-    #
-    # recent_requests_real = db.execute(
-    #     'SELECT COUNT(*) as cnt FROM response_logs WHERE real_ip_address = ? AND timestamp >= ?',
-    #     (real_ip_address, one_day_ago)
-    # ).fetchone()
-    #
-    # if recent_requests['cnt'] >= 5 or recent_requests_real['cnt'] >= 5:
-    #     return False
 
     recent_requests = db.execute(
         'SELECT COUNT(*) as cnt FROM request_logs WHERE user_id = ? AND timestamp >= ?',
@@ -166,9 +164,11 @@ def search_function(query,texts,user_id):
         yield str(e)
     db = get_db()
     # print(ip_address, original_query, query)
-    insert_statement = "INSERT INTO response_logs (ip_address, real_ip_address, query, collected_messages, user_id) VALUES (\""+ip_address+"\",\""+real_ip_address+"\",\""+original_query+"\",\""+query+"\",\""+user_id+"\")"
+    insert_statement = "INSERT INTO response_logs (ip_address, real_ip_address, query, collected_messages, user_id) VALUES (?, ?, ?, ?, ?)"
+    data_tuple = (ip_address, real_ip_address, original_query, query, user_id,)
     print(insert_statement)
-    db.execute(insert_statement)
+    print(data_tuple)
+    db.execute(insert_statement,data_tuple)
     db.commit()
 def search_function_debug(query):
     start_time = time.time()
@@ -230,6 +230,31 @@ def search():
     response = Response(stream_with_context(search_function(query,texts,user_id)), content_type='text/event-stream')
     response.set_cookie('user_id', user_id, max_age=60 * 60 * 24 * 365)
     return response
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        remember = True if request.form.get('remember') else False
+
+        # here we use a static user, replace with a real database lookup
+        user = User('1', 'admin', generate_password_hash(os.getenv('LOG_PASSWORD')))
+
+        # if the user exists and the password is correct, log them in
+        if user and check_password_hash(user.password, password):
+            login_user(user, remember=remember)
+            return redirect(request.args.get('next') or url_for('index'))
+
+        # if the username or password is incorrect, flash an error message
+        flash('Invalid username or password.')
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('index'))
 
 @app.route('/logs')
 @auth.login_required

@@ -84,7 +84,7 @@ def scheduled_task():
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=scheduled_task, trigger="interval", hours=12)
 scheduler.start()
-atexit.register(lambda: scheduler.shutdown())
+# atexit.register(lambda: scheduler.shutdown())
 
 # our user model
 class User(UserMixin):

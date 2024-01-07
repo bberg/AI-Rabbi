@@ -82,9 +82,9 @@ def scheduled_task():
     pass
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(func=scheduled_task, trigger="interval", minutes=1)
+scheduler.add_job(func=scheduled_task, trigger="interval", hours=12)
 scheduler.start()
-atexit.register(lambda: scheduler.shutdown())
+# atexit.register(lambda: scheduler.shutdown())
 
 @app.teardown_appcontext
 def shutdown_scheduler(exception=None):

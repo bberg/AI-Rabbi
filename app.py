@@ -74,6 +74,7 @@ pinecone_index = pinecone.Index(index_name)
 print(pinecone_index.describe_index_stats())
 with app.app_context():
     init_db()
+    app.secret_key = 'super secret key'
 
 # to keep pinecone from dumping the database, schedule at least one request per day
 def scheduled_task():
@@ -84,7 +85,7 @@ def scheduled_task():
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=scheduled_task, trigger="interval", hours=12)
 scheduler.start()
-# atexit.register(lambda: scheduler.shutdown())
+atexit.register(lambda: scheduler.shutdown())
 
 # our user model
 class User(UserMixin):
@@ -285,5 +286,4 @@ def view_response_logs():
 
 
 if __name__ == '__main__':
-    app.secret_key = 'super secret key'
     app.run(debug=True, port=3000)

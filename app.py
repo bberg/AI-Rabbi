@@ -7,7 +7,7 @@ import os
 import sqlite3
 import time
 import random
-from flask import Flask, render_template, request, Response, stream_with_context, g, url_for, redirect
+from flask import Flask, render_template, request, Response, stream_with_context, g, url_for, redirect, flash
 from flask_httpauth import HTTPBasicAuth
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -248,7 +248,7 @@ def login():
 
         # if the username or password is incorrect, flash an error message
         flash('Invalid username or password.')
-    return render_template('login.html')
+    return redirect(url_for('view_logs'))
 
 @app.route('/logout')
 @login_required
@@ -271,4 +271,5 @@ def view_response_logs():
     return render_template('response_logs.html', logs=logs)
 
 if __name__ == '__main__':
+    app.secret_key = 'super secret key'
     app.run(debug=True, port=3000)

@@ -234,6 +234,24 @@ Understanding who uses AI-Rabbi is critical for prioritization. Each archetype h
 - [ ] Track: questions asked, completion rate, return visits
 - [ ] Identify most common question categories
 
+#### 0.5 Infrastructure: Migrate from Pinecone to pgvector
+*See [PINECONE_ALTERNATIVES.md](./PINECONE_ALTERNATIVES.md) for detailed migration plan*
+
+- [ ] Deploy PostgreSQL with pgvector on Railway
+- [ ] Create `vector_db.py` module as Pinecone replacement
+- [ ] Run migration script to populate pgvector with embeddings
+- [ ] Update `app.py` to use new vector_db module
+- [ ] Remove Pinecone keepalive scheduler (no longer needed)
+- [ ] Consolidate SQLite logging into same Postgres instance
+- [ ] Remove `pinecone-client` from requirements.txt
+- [ ] Delete Pinecone environment variables
+
+**Benefits**:
+- Reduces cost from $70+/mo (Pinecone paid) to $5-15/mo (Railway Postgres)
+- Eliminates database dormancy issues (no more keepalive hacks)
+- Single database for vectors + logging simplifies infrastructure
+- No vendor lock-in, full SQL access for debugging
+
 **Success Metrics**:
 - Completion rate (user submits question → receives full response): >90%
 - Return visitor rate: >20%

@@ -3,73 +3,349 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Rabbi</title>
+    <title>AI Rabbi - Jewish Wisdom for Life's Questions</title>
+    <meta name="description" content="Ask the AI Rabbi your questions about life, ethics, relationships, and meaning. Get thoughtful answers grounded in Jewish Midrash and source texts.">
+
+    <!-- Open Graph for social sharing -->
+    <meta property="og:title" content="AI Rabbi - Jewish Wisdom for Life's Questions">
+    <meta property="og:description" content="Ancient wisdom, instant access. Ask any question and receive thoughtful analysis from Jewish Midrash texts.">
+    <meta property="og:type" content="website">
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+
+    <!-- Marked.js for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- Plausible Analytics - HUMAN TASK: Replace YOUR_DOMAIN with actual domain -->
+    <script defer data-domain="YOUR_DOMAIN" src="https://plausible.io/js/script.js"></script>
 </head>
 <body>
     <div class="container">
         <div class="logo-container text-center">
-            <img src="{{ url_for('static', filename='img/airabbi.png') }}" alt="Logo" class="logo">
+            <img src="{{ url_for('static', filename='img/airabbi.png') }}" alt="AI Rabbi Logo" class="logo">
         </div>
+
         <div id="marketing-text" class="text-center mt-4">
-<!--            <h2 id="marketing-heading">AI Rabbi</h2>-->
             <h3 id="marketing-heading">AI to answer life's questions using Jewish source texts</h3>
         </div>
-                    <p id="marketing-paragraph">
-                The AI Rabbi answers any question finding and analyzing up to three relevant sources. A summary of how past Jewish thinkers have approached your question is provided in a few different styles.
-            </p>
 
-<!--        <h1 class="text-center text-secondary">AI Rabbi</h1>-->
+        <p id="marketing-paragraph">
+            The AI Rabbi answers any question finding and analyzing up to three relevant sources. A summary of how past Jewish thinkers have approached your question is provided in a few different styles.
+        </p>
+
+        <!-- Example Questions -->
+        <div id="example-questions" class="example-questions-container">
+            <p class="example-label">Try asking about:</p>
+            <div class="example-chips">
+                <button class="example-chip" data-question="Why do bad things happen to good people?">Suffering & justice</button>
+                <button class="example-chip" data-question="How should I handle conflict with my family?">Family conflict</button>
+                <button class="example-chip" data-question="What is the meaning of life according to Jewish wisdom?">Meaning of life</button>
+                <button class="example-chip" data-question="How do I find my purpose?">Finding purpose</button>
+                <button class="example-chip" data-question="How should I deal with grief and loss?">Grief & loss</button>
+                <button class="example-chip" data-question="What does Jewish tradition say about forgiveness?">Forgiveness</button>
+            </div>
+        </div>
+
         <form id="search-form" class="search-form">
             <div class="input-group">
-                <input type="text" class="form-control" name="search" placeholder="Search...">
-                <button type="submit" class="btn btn-secondary">Ask</button>
+                <input type="text"
+                       class="form-control"
+                       name="search"
+                       id="search-input"
+                       placeholder="Ask about suffering, ethics, relationships, purpose, faith..."
+                       autocomplete="off">
+                <button type="submit" class="btn btn-secondary" id="submit-btn">
+                    <span id="btn-text">Ask</span>
+                    <span id="btn-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                </button>
             </div>
         </form>
-        <textarea id="results" class="form-control" rows="10" readonly></textarea>
+
+        <!-- Rate Limit Warning -->
+        <div id="rate-limit-warning" class="rate-limit-warning d-none">
+            <p>You've reached the daily limit of 5 questions.</p>
+            <p>Questions reset in <span id="reset-countdown">--:--:--</span></p>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading-state" class="loading-state d-none">
+            <div class="loading-content">
+                <div class="loading-spinner"></div>
+                <p class="loading-text">Searching ancient wisdom...</p>
+                <p class="loading-subtext">Finding relevant Midrash passages</p>
+            </div>
+        </div>
+
+        <!-- Results Container -->
+        <div id="results-container" class="results-container d-none">
+            <!-- Copy Button -->
+            <div class="results-header">
+                <button id="copy-btn" class="copy-btn" title="Copy response">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                        <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                    </svg>
+                    <span id="copy-text">Copy</span>
+                </button>
+            </div>
+
+            <!-- Rendered Markdown Output -->
+            <div id="results" class="results-content"></div>
+
+            <!-- Sources Section (collapsible) -->
+            <details id="sources-section" class="sources-section d-none">
+                <summary>View Source Texts</summary>
+                <div id="sources-content" class="sources-content"></div>
+            </details>
+        </div>
+
+        <!-- Error Display -->
+        <div id="error-container" class="error-container d-none">
+            <p id="error-message"></p>
+            <button id="retry-btn" class="btn btn-secondary">Try Again</button>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p class="disclaimer">AI-generated responses should not replace rabbinic guidance. Sources are from Midrash literature via Sefaria.</p>
+        </footer>
     </div>
+
     <script>
-        document.getElementById("search-form").addEventListener("submit", async (event) => {
-            event.preventDefault();
+        // State management
+        let rawResponse = '';
+        let isStreaming = false;
+        let abortController = null;
 
-            document.getElementById('marketing-text').classList.add('shrink');
-            document.getElementById('marketing-paragraph').textContent = '';
+        // DOM Elements
+        const searchForm = document.getElementById('search-form');
+        const searchInput = document.getElementById('search-input');
+        const submitBtn = document.getElementById('submit-btn');
+        const btnText = document.getElementById('btn-text');
+        const btnSpinner = document.getElementById('btn-spinner');
+        const marketingText = document.getElementById('marketing-text');
+        const marketingParagraph = document.getElementById('marketing-paragraph');
+        const exampleQuestions = document.getElementById('example-questions');
+        const loadingState = document.getElementById('loading-state');
+        const resultsContainer = document.getElementById('results-container');
+        const resultsContent = document.getElementById('results');
+        const sourcesSection = document.getElementById('sources-section');
+        const sourcesContent = document.getElementById('sources-content');
+        const copyBtn = document.getElementById('copy-btn');
+        const copyText = document.getElementById('copy-text');
+        const errorContainer = document.getElementById('error-container');
+        const errorMessage = document.getElementById('error-message');
+        const retryBtn = document.getElementById('retry-btn');
+        const rateLimitWarning = document.getElementById('rate-limit-warning');
+        const resetCountdown = document.getElementById('reset-countdown');
 
-
-            const searchInput = document.querySelector("input[name='search']");
-            const query = searchInput.value;
-            const resultsElement = document.getElementById("results");
-
-            resultsElement.value = ""; // Clear previous results
-
-            const response = await fetch("/search", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/x-www-form-urlencoded"
-                },
-                body: `search=${encodeURIComponent(query)}`
+        // Example question chips
+        document.querySelectorAll('.example-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                searchInput.value = chip.dataset.question;
+                searchForm.dispatchEvent(new Event('submit'));
             });
+        });
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-
-                const result = decoder.decode(value);
-                resultsElement.value += `${result}`; // Append the result to the textarea
-
-                                // Scroll to the bottom of the textarea
-                resultsElement.scrollTop = resultsElement.scrollHeight;
+        // Copy functionality
+        copyBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(rawResponse);
+                copyText.textContent = 'Copied!';
+                setTimeout(() => {
+                    copyText.textContent = 'Copy';
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy:', err);
             }
         });
-        // Shrink marketing text when search is conducted
-        // function shrinkText() {
-        //
-        // }
-        // document.getElementById('search-btn').addEventListener('click', shrinkText);
+
+        // Retry functionality
+        retryBtn.addEventListener('click', () => {
+            errorContainer.classList.add('d-none');
+            searchForm.dispatchEvent(new Event('submit'));
+        });
+
+        // Rate limit countdown
+        function startRateLimitCountdown() {
+            // Assume reset is 24 hours from now (simplified)
+            const resetTime = new Date();
+            resetTime.setHours(resetTime.getHours() + 24);
+
+            const updateCountdown = () => {
+                const now = new Date();
+                const diff = resetTime - now;
+
+                if (diff <= 0) {
+                    rateLimitWarning.classList.add('d-none');
+                    return;
+                }
+
+                const hours = Math.floor(diff / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+                resetCountdown.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            };
+
+            updateCountdown();
+            setInterval(updateCountdown, 1000);
+        }
+
+        // UI State functions
+        function setLoadingState(loading) {
+            if (loading) {
+                btnText.classList.add('d-none');
+                btnSpinner.classList.remove('d-none');
+                submitBtn.disabled = true;
+                loadingState.classList.remove('d-none');
+                resultsContainer.classList.add('d-none');
+                errorContainer.classList.add('d-none');
+            } else {
+                btnText.classList.remove('d-none');
+                btnSpinner.classList.add('d-none');
+                submitBtn.disabled = false;
+                loadingState.classList.add('d-none');
+            }
+        }
+
+        function showError(message, isRateLimit = false) {
+            setLoadingState(false);
+
+            if (isRateLimit) {
+                rateLimitWarning.classList.remove('d-none');
+                startRateLimitCountdown();
+            } else {
+                errorMessage.textContent = message;
+                errorContainer.classList.remove('d-none');
+            }
+        }
+
+        function shrinkMarketing() {
+            marketingText.classList.add('shrink');
+            marketingParagraph.textContent = '';
+            exampleQuestions.classList.add('d-none');
+        }
+
+        // Configure marked for safe rendering
+        marked.setOptions({
+            breaks: true,
+            gfm: true,
+            sanitize: false
+        });
+
+        // Main form submission
+        searchForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const query = searchInput.value.trim();
+            if (!query) return;
+
+            // Cancel any existing request
+            if (abortController) {
+                abortController.abort();
+            }
+            abortController = new AbortController();
+
+            shrinkMarketing();
+            setLoadingState(true);
+            rawResponse = '';
+            resultsContent.innerHTML = '';
+            sourcesContent.innerHTML = '';
+            sourcesSection.classList.add('d-none');
+
+            try {
+                const response = await fetch('/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: `search=${encodeURIComponent(query)}`,
+                    signal: abortController.signal
+                });
+
+                // Check for rate limit
+                if (response.status === 429) {
+                    showError('Rate limit exceeded', true);
+                    return;
+                }
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                // Check content type for error responses
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('text/html')) {
+                    const text = await response.text();
+                    if (text.includes('daily request limit')) {
+                        showError('Rate limit exceeded', true);
+                        return;
+                    }
+                    throw new Error(text);
+                }
+
+                // Hide loading, show results
+                setLoadingState(false);
+                resultsContainer.classList.remove('d-none');
+                isStreaming = true;
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    rawResponse += chunk;
+
+                    // Render markdown as it streams
+                    resultsContent.innerHTML = marked.parse(rawResponse);
+
+                    // Auto-scroll to bottom
+                    resultsContent.scrollTop = resultsContent.scrollHeight;
+                }
+
+                isStreaming = false;
+
+                // Final render
+                resultsContent.innerHTML = marked.parse(rawResponse);
+
+                // Track successful query (Plausible)
+                if (typeof plausible !== 'undefined') {
+                    plausible('Question Asked');
+                }
+
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log('Request aborted');
+                    return;
+                }
+
+                console.error('Search error:', error);
+
+                // Network error handling
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    showError('Network error. Please check your connection and try again.');
+                } else if (error.message.includes('timeout')) {
+                    showError('Request timed out. The server may be busy. Please try again.');
+                } else {
+                    showError(error.message || 'An unexpected error occurred. Please try again.');
+                }
+            }
+        });
+
+        // Keyboard shortcut: Enter to submit (already default), Escape to clear
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                searchInput.value = '';
+                if (abortController) {
+                    abortController.abort();
+                }
+            }
+        });
     </script>
 </body>
 </html>

@@ -4,6 +4,20 @@ An AI-powered chatbot that answers life's questions using Jewish Midrash source 
 
 ## Architecture Overview
 
+The application supports two vector database backends: **pgvector** (recommended) and **Pinecone** (legacy).
+
+### pgvector Architecture (Recommended)
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Flask Web     │────▶│   OpenAI API    │     │   PostgreSQL    │
+│   Application   │     │   (GPT-4 +      │     │   + pgvector    │
+│   (app.py)      │◀────│   Embeddings)   │     │   (Railway)     │
+└────────┬────────┘     └─────────────────┘     └────────┬────────┘
+         │                                               │
+         └───────────────────────────────────────────────┘
+```
+
+### Pinecone Architecture (Legacy)
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │   Flask Web     │────▶│   OpenAI API    │     │    Pinecone     │
@@ -20,7 +34,7 @@ An AI-powered chatbot that answers life's questions using Jewish Midrash source 
 ### Core Components
 
 - **Flask Web Server** (`app.py`): Main application handling HTTP requests, user authentication, and streaming responses
-- **Pinecone Vector Database**: Stores embeddings of Midrash text segments for semantic search
+- **Vector Database**: pgvector (PostgreSQL) or Pinecone for semantic search over Midrash embeddings
 - **OpenAI GPT-4**: Generates rabbi-style responses based on retrieved source texts
 - **SQLite**: Logs user requests and responses for analytics
 
@@ -29,21 +43,31 @@ An AI-powered chatbot that answers life's questions using Jewish Midrash source 
 ```
 AI-Rabbi/
 ├── app.py                              # Main Flask application
-├── generate-midrash-embeddings.py      # Script to generate and upload embeddings
-├── minimize_output_file.py             # Utility to reduce pickle file size (deprecated)
+├── vector_db.py                        # Vector database abstraction (pgvector/Pinecone)
+├── migrate_to_pgvector.py              # Migration script from Pinecone to pgvector
+├── generate-midrash-embeddings.py      # Script to generate and upload embeddings (legacy)
 ├── schema.sql                          # SQLite database schema
 ├── requirements.txt                    # Python dependencies
-├── Procfile                            # Heroku deployment configuration
-├── output-5sentence_without_embeddings.pkl  # Preprocessed Midrash data (5 sentences per segment)
+├── Procfile                            # Heroku/Railway deployment configuration
+│
+├── CLAUDE.md                           # This file - AI assistant documentation
+├── HUMAN_TASKS.md                      # Manual tasks for deployment
+├── PINECONE_ALTERNATIVES.md            # Vector DB comparison and migration guide
+├── PRODUCT_ROADMAP.md                  # Product strategy and roadmap
+│
+├── output-5sentence_without_embeddings.pkl  # Preprocessed Midrash data
 ├── output_without_embeddings.pkl       # Alternative Midrash data
 ├── MJ prompt.txt                       # Midjourney prompt for logo generation
+├── minimize_output_file.py             # Utility (deprecated)
+│
 ├── static/
 │   ├── css/
-│   │   └── main.css                    # Application styles
+│   │   └── main.css                    # Application styles (comprehensive)
 │   └── img/
 │       └── airabbi.png                 # Logo image
+│
 └── templates/
-    ├── index.html                      # Main search interface
+    ├── index.html                      # Main search interface (with markdown rendering)
     ├── request_logs.html               # Admin view for request logs
     └── response_logs.html              # Admin view for response logs
 ```
@@ -54,63 +78,116 @@ AI-Rabbi/
 
 The core Flask application with the following key functions:
 
-| Function | Line | Description |
-|----------|------|-------------|
-| `get_embedding()` | 124 | Creates text embeddings using OpenAI's ada-002 model |
-| `get_relevant_sources()` | 195 | Queries Pinecone for top 3 relevant Midrash passages |
-| `search_function()` | 128 | Streams GPT-4 responses with Midrash context |
-| `is_request_allowed()` | 108 | Rate limiting check (5 requests/day per user) |
-| `scheduled_task()` | 80 | Keepalive task to prevent Pinecone database dormancy |
+| Function | Description |
+|----------|-------------|
+| `get_embedding()` | Creates text embeddings using OpenAI's ada-002 model |
+| `get_relevant_sources()` | Queries vector DB for top 3 relevant Midrash passages |
+| `search_function()` | Streams GPT-4 responses with Midrash context |
+| `is_request_allowed()` | Rate limiting check (5 requests/day per user) |
+| `get_remaining_requests()` | Returns remaining daily requests for a user |
 
 **Routes:**
 - `GET /` - Main search interface
 - `POST /search` - Submit a question and receive streaming response
+- `GET /api/remaining-requests` - Check remaining daily requests (JSON)
+- `GET /health` - Health check endpoint (JSON)
 - `GET /logs` - View request logs (admin, HTTP Basic Auth)
 - `GET /response_logs` - View response logs (admin, HTTP Basic Auth)
 - `POST /login` - User authentication
 - `GET /logout` - User logout
 
-### `generate-midrash-embeddings.py` - Data Pipeline
+### `vector_db.py` - Vector Database Abstraction
 
-Processes Midrash text files from Sefaria export and uploads embeddings to Pinecone:
+Provides a unified interface for both pgvector and Pinecone backends:
 
-1. Finds all `.txt` files in `Sefaria-Export/txt/Midrash/*/English/`
-2. Splits texts into segments (default: 5 sentences each)
-3. Generates embeddings using OpenAI ada-002
-4. Uploads embeddings to Pinecone in batches of 100
-5. Saves progress to pickle files to resume interrupted uploads
+```python
+from vector_db import VectorDB
 
-### `schema.sql` - Database Schema
+# Auto-selects based on VECTOR_DB_BACKEND env var
+db = VectorDB()
 
-Two tables for logging:
-- `request_logs`: Records incoming search queries
-- `response_logs`: Records queries with their AI-generated responses
+# Or explicitly choose backend
+db = VectorDB(backend='pgvector')
+db = VectorDB(backend='pinecone')
 
-Both tables track: `id`, `ip_address`, `real_ip_address`, `query`, `collected_messages`, `user_id`, `timestamp`
+# Query for similar vectors
+results = db.query(embedding, top_k=3)
+
+# Upsert vectors
+db.upsert(vectors)
+```
+
+### `migrate_to_pgvector.py` - Migration Script
+
+Migrates embeddings from pickle files to pgvector:
+
+```bash
+# Dry run
+python migrate_to_pgvector.py --dry-run
+
+# Full migration
+python migrate_to_pgvector.py --batch-size 50
+
+# Resume interrupted migration
+python migrate_to_pgvector.py --resume
+
+# Verify migration
+python migrate_to_pgvector.py --verify
+
+# Test query
+python migrate_to_pgvector.py --test
+```
+
+### `templates/index.html` - Frontend
+
+Modern UI with:
+- Markdown rendering (via marked.js)
+- Example question chips
+- Loading states with spinner
+- Copy response button
+- Rate limit warnings with countdown
+- Error handling with retry
+- Mobile-responsive design
+- Plausible analytics integration
 
 ## Environment Variables
 
-Required environment variables for deployment:
+### Required (All Deployments)
 
 | Variable | Description |
 |----------|-------------|
 | `OPENAI_API_KEY` | OpenAI API key for GPT-4 and embeddings |
-| `PINECONE_API_KEY` | Pinecone API key for vector storage |
-| `PINECONE_ENV` | Pinecone environment (e.g., `us-west1-gcp`) |
+| `SECRET_KEY` | Flask session secret (generate random 32+ chars) |
 | `LOG_PASSWORD` | Password for admin log access |
+
+### For pgvector Backend (Recommended)
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `VECTOR_DB_BACKEND` | Set to `pgvector` |
+
+### For Pinecone Backend (Legacy)
+
+| Variable | Description |
+|----------|-------------|
+| `PINECONE_API_KEY` | Pinecone API key |
+| `PINECONE_ENV` | Pinecone environment (e.g., `us-west1-gcp`) |
+| `VECTOR_DB_BACKEND` | Set to `pinecone` (or omit, it's the default) |
 
 ## Development Workflow
 
-### Local Development
+### Local Development with pgvector
 
 ```bash
 # Install dependencies
 pip install -r requirements.txt
 
 # Set environment variables
+export DATABASE_URL="postgresql://..."
+export VECTOR_DB_BACKEND="pgvector"
 export OPENAI_API_KEY="your-key"
-export PINECONE_API_KEY="your-key"
-export PINECONE_ENV="your-env"
+export SECRET_KEY="your-secret"
 export LOG_PASSWORD="your-password"
 
 # Run the application
@@ -118,75 +195,104 @@ python app.py
 # Server starts at http://localhost:3000
 ```
 
-### Deployment (Heroku)
+### Local Development with Pinecone (Legacy)
 
-The application is configured for Heroku deployment via `Procfile`:
-```
-web: gunicorn app:app -t 300 --bind 0.0.0.0:$PORT --log-file -
+```bash
+# Set environment variables
+export PINECONE_API_KEY="your-key"
+export PINECONE_ENV="your-env"
+export OPENAI_API_KEY="your-key"
+export LOG_PASSWORD="your-password"
+
+# Run the application
+python app.py
 ```
 
-The 300-second timeout accommodates long-running GPT-4 streaming responses.
+### Deployment (Railway - Recommended)
+
+1. Deploy pgvector template from Railway marketplace
+2. Deploy app, linking to pgvector service
+3. Set environment variables in Railway dashboard
+4. Run migration script locally against Railway DB
+
+See `HUMAN_TASKS.md` for detailed deployment steps.
 
 ## Key Technical Details
 
 ### Embeddings & Search
 
 - **Model**: `text-embedding-ada-002` (1536 dimensions)
-- **Index**: Pinecone index named `midrash` with cosine similarity
+- **Similarity**: Cosine similarity
 - **Retrieval**: Top 3 most relevant passages per query
-- **Token counting**: Uses `tiktoken` with `cl100k_base` encoding
+- **Index**: HNSW index for fast approximate nearest neighbor search
 
 ### Rate Limiting
 
 - Users are limited to 5 requests per 24-hour period
 - Users identified by cookie-based UUID (`user_id`)
-- Check implemented in `is_request_allowed()` function
+- Returns HTTP 429 when limit exceeded
+- Frontend shows countdown to reset
 
 ### GPT-4 System Prompt
 
 The AI responds as a "Rabbi chatbot analyzing Midrash" with instructions to:
-- Analyze how each source text answers the question
-- Provide step-by-step reasoning
-- Cite sources explicitly
-- Identify conflicting advice between texts
-- Provide a modern rabbinic sermon story
-- Offer theological/philosophical explanation
-- Say "I don't know" if sources don't answer the question
+1. Analyze how each source text answers the question
+2. Provide step-by-step reasoning
+3. Cite sources explicitly
+4. Identify conflicting advice between texts
+5. Provide a modern rabbinic sermon story
+6. Offer theological/philosophical explanation
+7. Say "I don't know" if sources don't answer the question
 
-### Keepalive Scheduler
+### Frontend Features
 
-A background scheduler (`APScheduler`) runs every 12 hours to query Pinecone and prevent database dormancy on free tier.
+- **Markdown Rendering**: Responses rendered with headers, lists, bold, etc.
+- **Example Questions**: Clickable chips for common questions
+- **Loading State**: Animated spinner while searching
+- **Copy Button**: One-click copy of response
+- **Error Handling**: Network errors, timeouts, rate limits
+- **Mobile Responsive**: Works on all screen sizes
 
 ## Conventions
 
 ### Code Style
 
-- Python code follows standard conventions
-- No type hints currently used
+- Python code follows standard conventions with type hints
 - Debug printing controlled by `print_all` flag (default: `False`)
 - Jinja2 templates with Bootstrap 5 for styling
+- CSS organized by component with clear section headers
 
 ### Database
 
-- SQLite database file: `search_logs.db`
+- **SQLite** (`search_logs.db`): Request/response logging
+- **PostgreSQL/pgvector**: Vector embeddings (production)
 - Schema initialized on app startup via `init_db()`
-- Flask `g` object used for request-scoped database connections
+- Flask `g` object used for request-scoped connections
 
-### Security Notes
+### Security
 
-- Admin routes protected by HTTP Basic Auth (`flask_httpauth`)
-- User sessions managed via `flask_login`
-- SQL injection vulnerability exists in `/search` route (line 236) - uses string concatenation instead of parameterized queries
-- Secret key is hardcoded (`'super secret key'`) - should use environment variable in production
+- Admin routes protected by HTTP Basic Auth
+- SQL injection **fixed** - all queries use parameterized statements
+- Secret key from environment variable
+- Rate limiting prevents abuse
 
 ## Common Tasks
+
+### Switching Vector Backends
+
+```bash
+# Switch to pgvector
+export VECTOR_DB_BACKEND=pgvector
+
+# Switch to Pinecone
+export VECTOR_DB_BACKEND=pinecone
+```
 
 ### Adding New Midrash Sources
 
 1. Place text files in `Sefaria-Export/txt/Midrash/[source]/English/`
-2. Run `python generate-midrash-embeddings.py`
-3. Monitor progress - saves checkpoints to pickle files
-4. Restart application to pick up new data
+2. Run `python generate-midrash-embeddings.py` (for Pinecone)
+3. Or run `python migrate_to_pgvector.py` (for pgvector)
 
 ### Viewing Logs
 
@@ -198,26 +304,31 @@ Requires HTTP Basic Auth with username `admin` and `LOG_PASSWORD` env var.
 
 ### Modifying the AI Personality
 
-Edit the system prompt in `app.py` line 151 within the `search_function()` to change how the AI Rabbi responds.
+Edit the `system_prompt` variable in `app.py` within the `search_function()` to change how the AI Rabbi responds.
 
 ## Dependencies
 
 Key packages from `requirements.txt`:
+
+**Core:**
 - `flask==2.3.2` - Web framework
-- `openai==0.27.2` - OpenAI API client (legacy v0.x API)
-- `pinecone-client==2.2.1` - Vector database client (legacy v2.x API)
-- `pandas==2.0.1` - Data manipulation
-- `tiktoken==0.3.3` - Token counting
 - `gunicorn==20.1.0` - Production WSGI server
-- `APScheduler==3.10.4` - Background job scheduler
 
-**Note**: Uses legacy OpenAI and Pinecone client versions. Modern projects should use `openai>=1.0.0` and `pinecone-client>=3.0.0` with updated API syntax.
+**AI:**
+- `openai==0.27.2` - OpenAI API client
+- `tiktoken==0.3.3` - Token counting
 
-## Known Issues & TODOs
+**Vector Databases:**
+- `psycopg2-binary==2.9.9` - PostgreSQL/pgvector driver
+- `pinecone-client==2.2.1` - Pinecone client (legacy)
 
-Based on code comments:
-- SQL injection vulnerability in search route (should use parameterized queries)
-- Hardcoded secret key should be environment variable
-- `minimize_output_file.py` marked as deprecated
-- Consider second-pass retrieval within top articles for better relevance
-- Exception handling for development mode via cookies (incomplete)
+**Data:**
+- `pandas==2.0.1` - Data manipulation
+
+**Note**: Uses legacy OpenAI v0.x API. The pgvector integration uses modern PostgreSQL best practices.
+
+## Related Documentation
+
+- **HUMAN_TASKS.md** - Manual deployment and configuration steps
+- **PINECONE_ALTERNATIVES.md** - Vector database comparison and migration guide
+- **PRODUCT_ROADMAP.md** - Product strategy, user archetypes, and feature roadmap
